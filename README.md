@@ -66,6 +66,13 @@ Tuỳ chọn:
 - `--lr LR`
 - `--batch-size B`
 - `--device cpu|cuda`
+- `--image-encoders dino,eva,beit`
+- `--fusion gated|attention|linear`
+
+Ví dụ:
+```
+python -m scripts.train --root . --image-encoders dino,beit --fusion attention
+```
 
 ## Ghi chú
 - Các module xử lý dữ liệu được đặt trong `src/data/`.

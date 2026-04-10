@@ -23,6 +23,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--save", type=str, default="outputs/checkpoints/ViFusion.pt")
     parser.add_argument("--skip-normalize", action="store_true")
+    parser.add_argument(
+        "--image-encoders",
+        type=str,
+        default=None,
+        help="Comma-separated list of image encoders, e.g. dino,eva,beit",
+    )
+    parser.add_argument(
+        "--fusion",
+        type=str,
+        default=None,
+        choices=["gated", "attention", "linear"],
+        help="Fusion method for image encoders",
+    )
     return parser.parse_args()
 
 
@@ -33,6 +46,13 @@ def main() -> None:
     data_cfg = DataConfig().resolve(root)
     model_cfg = ModelConfig()
     train_cfg = TrainConfig(epochs=args.epochs, lr=args.lr, weight_decay=args.weight_decay)
+
+    if args.image_encoders:
+        image_encoders = [e.strip() for e in args.image_encoders.split(",") if e.strip()]
+    else:
+        image_encoders = list(model_cfg.image_encoders)
+
+    fusion = args.fusion or model_cfg.fusion
 
     batch_size = args.batch_size or data_cfg.train_batch_size
     num_workers = args.num_workers if args.num_workers is not None else data_cfg.num_workers
@@ -64,8 +84,8 @@ def main() -> None:
     model = VQAModel(
         vocab_size=None,
         text_model=model_cfg.text_model,
-        image_encoders=list(model_cfg.image_encoders),
-        fusion=model_cfg.fusion,
+        image_encoders=image_encoders,
+        fusion=fusion,
         d_model=model_cfg.d_model,
         ffn_hidden=model_cfg.ffn_hidden,
         num_heads=model_cfg.num_heads,
@@ -97,7 +117,7 @@ def main() -> None:
         {
             "state_dict": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "model_cfg": model_cfg.__dict__,
+            "model_cfg": {**model_cfg.__dict__, "image_encoders": image_encoders, "fusion": fusion},
             "data_cfg": data_cfg.__dict__,
             "train_cfg": train_cfg.__dict__,
         },
