@@ -1,0 +1,35 @@
+# Data & outputs
+data/raw/*
+data/processed/*
+outputs/checkpoints/
+outputs/figures/
+
+# Environments
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Jupyter
+*.ipynb~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Model checkpoints
+*.pt
+*.pth
+
+# Local config
+.env
+.env.*

@@ -1,0 +1,17 @@
+pandas
+numpy
+pillow
+torch
+torchvision
+transformers
+timm
+datasets
+underthesea
+vncorenlp
+rouge-score
+pycocoevalcap
+nltk
+scikit-learn
+tqdm
+matplotlib
+pytest
