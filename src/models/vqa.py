@@ -21,6 +21,9 @@ class VQAModel(nn.Module):
         text_model: str,
         image_encoders: list[str] | tuple[str, ...],
         fusion: str = "gated",
+        image_weights: dict[str, str] | None = None,
+        use_safetensors: bool = True,
+        local_files_only: bool = False,
         d_model: int = 768,
         ffn_hidden: int = 2048,
         num_heads: int = 8,
@@ -36,9 +39,20 @@ class VQAModel(nn.Module):
             fusion=fusion,
             embedding_dim=d_model,
             device=device,
+            image_weights=image_weights,
         )
-        self.ques_model = QuesEmbedding(text_model=text_model, device=device)
-        self.ans_model = AnsEmbedding(text_model=text_model, device=device)
+        self.ques_model = QuesEmbedding(
+            text_model=text_model,
+            device=device,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+        )
+        self.ans_model = AnsEmbedding(
+            text_model=text_model,
+            device=device,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+        )
 
         if vocab_size is None:
             vocab_size = len(self.ans_model.tokenizer.get_vocab())

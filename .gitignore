@@ -33,3 +33,7 @@ Thumbs.db
 # Local config
 .env
 .env.*
+
+# Local tooling / notebooks
+.codex/
+notebooks/

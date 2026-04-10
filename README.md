@@ -68,10 +68,20 @@ Tuỳ chọn:
 - `--device cpu|cuda`
 - `--image-encoders dino,eva,beit`
 - `--fusion gated|attention|linear`
+- `--encoder-weights dino=/path/a.safetensors,eva=/path/b.safetensors`
+- `--local-files-only`
 
 Ví dụ:
 ```
 python -m scripts.train --root . --image-encoders dino,beit --fusion attention
+```
+
+Ví dụ dùng safetensors (không dùng `torch.load`):
+```
+python -m scripts.train --root . \
+  --image-encoders dino,eva \
+  --encoder-weights dino=/kaggle/input/weights/dino.safetensors,eva=/kaggle/input/weights/eva.safetensors \
+  --local-files-only
 ```
 
 ## Ghi chú

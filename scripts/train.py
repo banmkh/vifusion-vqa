@@ -36,7 +36,31 @@ def parse_args() -> argparse.Namespace:
         choices=["gated", "attention", "linear"],
         help="Fusion method for image encoders",
     )
+    parser.add_argument(
+        "--encoder-weights",
+        type=str,
+        default=None,
+        help="Comma-separated encoder weights: dino=/path/a.safetensors,eva=/path/b.safetensors",
+    )
+    parser.add_argument(
+        "--local-files-only",
+        action="store_true",
+        help="Only load model weights from local files (no downloads)",
+    )
     return parser.parse_args()
+
+
+def parse_encoder_weights(arg: str | None) -> dict[str, str]:
+    if not arg:
+        return {}
+    items = [x.strip() for x in arg.split(",") if x.strip()]
+    out: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise ValueError("encoder-weights must be in name=path format")
+        name, path = item.split("=", 1)
+        out[name.strip().lower()] = path.strip()
+    return out
 
 
 def main() -> None:
@@ -53,6 +77,7 @@ def main() -> None:
         image_encoders = list(model_cfg.image_encoders)
 
     fusion = args.fusion or model_cfg.fusion
+    image_weights = parse_encoder_weights(args.encoder_weights) or model_cfg.image_weights
 
     batch_size = args.batch_size or data_cfg.train_batch_size
     num_workers = args.num_workers if args.num_workers is not None else data_cfg.num_workers
@@ -86,6 +111,9 @@ def main() -> None:
         text_model=model_cfg.text_model,
         image_encoders=image_encoders,
         fusion=fusion,
+        image_weights=image_weights,
+        use_safetensors=model_cfg.use_safetensors,
+        local_files_only=args.local_files_only or model_cfg.local_files_only,
         d_model=model_cfg.d_model,
         ffn_hidden=model_cfg.ffn_hidden,
         num_heads=model_cfg.num_heads,
@@ -117,7 +145,13 @@ def main() -> None:
         {
             "state_dict": model.state_dict(),
             "optimizer": optimizer.state_dict(),
-            "model_cfg": {**model_cfg.__dict__, "image_encoders": image_encoders, "fusion": fusion},
+            "model_cfg": {
+                **model_cfg.__dict__,
+                "image_encoders": image_encoders,
+                "fusion": fusion,
+                "image_weights": image_weights,
+                "local_files_only": args.local_files_only or model_cfg.local_files_only,
+            },
             "data_cfg": data_cfg.__dict__,
             "train_cfg": train_cfg.__dict__,
         },

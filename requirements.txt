@@ -6,6 +6,7 @@ torchvision
 transformers
 timm
 datasets
+safetensors
 underthesea
 vncorenlp
 rouge-score

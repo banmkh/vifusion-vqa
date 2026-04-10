@@ -6,11 +6,23 @@ from transformers import AutoModel, AutoTokenizer
 
 
 class QuesEmbedding(nn.Module):
-    def __init__(self, text_model: str, input_size: int = 768, output_size: int = 768, device: str = "cuda"):
+    def __init__(
+        self,
+        text_model: str,
+        input_size: int = 768,
+        output_size: int = 768,
+        device: str = "cuda",
+        use_safetensors: bool = True,
+        local_files_only: bool = False,
+    ):
         super().__init__()
         self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained(text_model)
-        self.phobert = AutoModel.from_pretrained(text_model)
+        self.phobert = AutoModel.from_pretrained(
+            text_model,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+        )
         self.lstm = nn.LSTM(input_size, output_size, batch_first=True)
         self.to(self.device)
 
@@ -29,11 +41,22 @@ class QuesEmbedding(nn.Module):
 
 
 class AnsEmbedding(nn.Module):
-    def __init__(self, text_model: str, input_size: int = 768, device: str = "cuda"):
+    def __init__(
+        self,
+        text_model: str,
+        input_size: int = 768,
+        device: str = "cuda",
+        use_safetensors: bool = True,
+        local_files_only: bool = False,
+    ):
         super().__init__()
         self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained(text_model)
-        self.phobert_embed = AutoModel.from_pretrained(text_model).embeddings
+        self.phobert_embed = AutoModel.from_pretrained(
+            text_model,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+        ).embeddings
         self.to(self.device)
 
     def forward(self, ans, max_len: int):

@@ -6,16 +6,17 @@ import timm
 from transformers import AutoImageProcessor, BeitModel, AutoModel
 
 
+from .weights import load_safetensors_weights
+
+
 class DinoBackbone(nn.Module):
-    def __init__(self, embedding_dim: int = 768, device: str = "cuda"):
+    def __init__(self, embedding_dim: int = 768, device: str = "cuda", weights_path: str | None = None):
         super().__init__()
         self.device = device
-        self.model = timm.create_model("vit_base_patch16_224.dino", pretrained=True)
+        self.model = timm.create_model("vit_base_patch16_224.dino", pretrained=False)
         self.model.head = nn.Linear(self.model.embed_dim, embedding_dim)
-        for p in self.model.parameters():
-            p.requires_grad = False
-        for p in self.model.blocks[-2:].parameters():
-            p.requires_grad = True
+        if weights_path:
+            load_safetensors_weights(self.model, weights_path, strict=False, device="cpu")
         self.to(self.device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -23,15 +24,13 @@ class DinoBackbone(nn.Module):
 
 
 class SwinBackbone(nn.Module):
-    def __init__(self, embedding_dim: int = 768, device: str = "cuda"):
+    def __init__(self, embedding_dim: int = 768, device: str = "cuda", weights_path: str | None = None):
         super().__init__()
         self.device = device
-        self.model = timm.create_model("swin_base_patch4_window7_224", pretrained=True)
+        self.model = timm.create_model("swin_base_patch4_window7_224", pretrained=False)
         self.model.head = nn.Linear(self.model.head.in_features, embedding_dim)
-        for p in self.model.parameters():
-            p.requires_grad = False
-        for p in self.model.layers[-1:].parameters():
-            p.requires_grad = True
+        if weights_path:
+            load_safetensors_weights(self.model, weights_path, strict=False, device="cpu")
         self.to(self.device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -39,15 +38,13 @@ class SwinBackbone(nn.Module):
 
 
 class ConvNeXtBackbone(nn.Module):
-    def __init__(self, embedding_dim: int = 768, device: str = "cuda"):
+    def __init__(self, embedding_dim: int = 768, device: str = "cuda", weights_path: str | None = None):
         super().__init__()
         self.device = device
-        self.model = timm.create_model("convnext_base", pretrained=True)
+        self.model = timm.create_model("convnext_base", pretrained=False)
         self.model.head = nn.Linear(self.model.head.in_features, embedding_dim)
-        for p in self.model.parameters():
-            p.requires_grad = False
-        for p in self.model.stages[-1:].parameters():
-            p.requires_grad = True
+        if weights_path:
+            load_safetensors_weights(self.model, weights_path, strict=False, device="cpu")
         self.to(self.device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -90,16 +87,18 @@ class BeitBackbone(nn.Module):
 
 
 class EvaBackbone(nn.Module):
-    def __init__(self, embedding_dim: int = 768, device: str = "cuda"):
+    def __init__(self, embedding_dim: int = 768, device: str = "cuda", weights_path: str | None = None):
         super().__init__()
         self.device = device
         self.model = timm.create_model(
             "eva02_base_patch14_224.mim_in22k",
-            pretrained=True,
+            pretrained=False,
             num_classes=0,
         )
         self.out_dim = self.model.num_features
         self.proj = nn.Linear(self.out_dim, embedding_dim) if self.out_dim != embedding_dim else nn.Identity()
+        if weights_path:
+            load_safetensors_weights(self.model, weights_path, strict=False, device="cpu")
         self.to(self.device)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:

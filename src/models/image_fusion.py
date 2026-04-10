@@ -26,9 +26,10 @@ class ImageEmbedding(nn.Module):
         fusion: str = "gated",
         embedding_dim: int = 768,
         device: str = "cuda",
+        image_weights: dict[str, str] | None = None,
     ):
         super().__init__()
-        factory = ImageEncoderFactory(embedding_dim, device)
+        factory = ImageEncoderFactory(embedding_dim, device, image_weights)
         self.encoders = nn.ModuleList([factory.get_encoder(name) for name in encoders])
 
         if fusion == "linear":

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -8,6 +8,9 @@ class ModelConfig:
     image_encoders: tuple[str, ...] = ("dino", "eva")
     fusion: str = "gated"
     text_model: str = "vinai/phobert-base"
+    use_safetensors: bool = True
+    local_files_only: bool = False
+    image_weights: dict[str, str] = field(default_factory=dict)
 
     d_model: int = 768
     ffn_hidden: int = 2048
