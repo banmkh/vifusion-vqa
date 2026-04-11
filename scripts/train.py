@@ -9,7 +9,14 @@ import torch.nn as nn
 
 from src.data import DataConfig, build_image_transform, build_dataloaders, normalize_qa_df
 from src.models import ModelConfig, VQAModel
-from src.training import TrainConfig, train_one_epoch, evaluate_one_epoch, build_optimizer, build_scheduler
+from src.training import (
+    TrainConfig,
+    train_one_epoch,
+    evaluate_one_epoch,
+    evaluate_benchmark_epoch,
+    build_optimizer,
+    build_scheduler,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         "--local-files-only",
         action="store_true",
         help="Only load model weights from local files (no downloads)",
+    )
+    parser.add_argument(
+        "--benchmark-interval",
+        type=int,
+        default=2,
+        help="Compute benchmark metrics every N epochs (default: 2)",
     )
     return parser.parse_args()
 
@@ -138,6 +151,24 @@ def main() -> None:
             model, dev_loader, criterion, device, max_len=data_cfg.max_len
         )
         print(f"Epoch {epoch + 1}/{train_cfg.epochs} - dev loss: {avg_dev:.4f}")
+
+        # Compute benchmark metrics every N epochs (starting from epoch 1)
+        if (epoch + 1) % args.benchmark_interval == 1:
+            print(f"\nComputing benchmark metrics for epoch {epoch + 1}...")
+            benchmark_metrics = evaluate_benchmark_epoch(
+                model, dev_loader, device, max_len=data_cfg.max_len
+            )
+            print(f"Epoch {epoch + 1}/{train_cfg.epochs} - Benchmark Results:")
+            print(f"  - Precision:  {benchmark_metrics['precision']:.4f}")
+            print(f"  - Recall:     {benchmark_metrics['recall']:.4f}")
+            print(f"  - F1-Score:   {benchmark_metrics['f1']:.4f}")
+            print(f"  - Accuracy:   {benchmark_metrics['accuracy']:.4f}")
+            print(f"  - BLEU-1:     {benchmark_metrics['bleu_1']:.4f}")
+            print(f"  - BLEU-2:     {benchmark_metrics['bleu_2']:.4f}")
+            print(f"  - BLEU-3:     {benchmark_metrics['bleu_3']:.4f}")
+            print(f"  - BLEU-4:     {benchmark_metrics['bleu_4']:.4f}")
+            print(f"  - ROUGE-L:    {benchmark_metrics['rouge']:.4f}")
+            print(f"  - CIDER:      {benchmark_metrics['cider']:.4f}\n")
 
     save_path = Path(args.save)
     save_path.parent.mkdir(parents=True, exist_ok=True)

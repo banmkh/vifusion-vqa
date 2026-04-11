@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from src.utils import evaluation_benchmark, build_vocab_swap
+
 
 @dataclass
 class TrainConfig:
@@ -52,3 +54,21 @@ def build_optimizer(model, cfg: TrainConfig):
 
 def build_scheduler(optimizer, epochs: int):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+
+def evaluate_benchmark_epoch(model, loader, device, max_len: int):
+    """
+    Evaluate model on benchmark metrics (BLEU, ROUGE, CIDER, VQA metrics).
+    
+    Args:
+        model: VQA model with ans_model.tokenizer
+        loader: DataLoader for evaluation
+        device: torch device (cuda/cpu)
+        max_len: Max length for answer generation
+        
+    Returns:
+        dict with benchmark metrics
+    """
+    vocab_swap = build_vocab_swap(model.ans_model.tokenizer.get_vocab())
+    metrics = evaluation_benchmark(model, loader, None, vocab_swap, device, max_len)
+    return metrics
