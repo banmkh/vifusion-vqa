@@ -153,7 +153,7 @@ def main() -> None:
         print(f"Epoch {epoch + 1}/{train_cfg.epochs} - dev loss: {avg_dev:.4f}")
 
         # Compute benchmark metrics every N epochs (starting from epoch 1)
-        if (epoch + 1) % args.benchmark_interval == 1:
+        if epoch == 0 or epoch == train_cfg.epochs - 1:
             print(f"\nComputing benchmark metrics for epoch {epoch + 1}...")
             benchmark_metrics = evaluate_benchmark_epoch(
                 model, dev_loader, device, max_len=data_cfg.max_len
