@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
         "--fusion",
         type=str,
         default=None,
-        choices=["gated", "attention", "linear"],
+        choices=["gated", "attention", "linear","cross-attention"],
         help="Fusion method for image encoders",
     )
     parser.add_argument(
