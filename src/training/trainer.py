@@ -24,7 +24,12 @@ def train_one_epoch(model, loader, criterion, optimizer, device, max_len: int):
         images = images.to(device)
 
         logits, targets = model(images, questions, answers, anno_ids=None, mask=True, max_len=max_len)
-        loss = criterion(logits.view(-1, logits.size(-1)), targets.view(-1))
+        # logits[:, t, :] dự đoán token tại vị trí t+1 (sau khi thấy token 0..t)
+        # → so sánh logits[:, :-1, :] với targets[:, 1:] (shift trái 1 vị trí)
+        loss = criterion(
+            logits[:, :-1, :].contiguous().view(-1, logits.size(-1)),
+            targets[:, 1:].contiguous().view(-1),
+        )
 
         optimizer.zero_grad()
         loss.backward()
@@ -43,7 +48,10 @@ def evaluate_one_epoch(model, loader, criterion, device, max_len: int):
             _, _, images, questions, answers = batch
             images = images.to(device)
             logits, targets = model(images, questions, answers, anno_ids=None, mask=True, max_len=max_len)
-            loss = criterion(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = criterion(
+                logits[:, :-1, :].contiguous().view(-1, logits.size(-1)),
+                targets[:, 1:].contiguous().view(-1),
+            )
             total_loss += loss.item()
     return total_loss / max(1, len(loader))
 

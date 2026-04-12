@@ -32,7 +32,7 @@ def make_loader(batch_size=2, max_len=5):
 def test_train_and_eval_one_epoch():
     model = DummyModel()
     loader = make_loader()
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=1)
     cfg = TrainConfig(epochs=1, lr=1e-3, weight_decay=0.0)
     optimizer = build_optimizer(model, cfg)
 
@@ -41,6 +41,48 @@ def test_train_and_eval_one_epoch():
 
     assert train_loss >= 0.0
     assert eval_loss >= 0.0
+
+
+def test_loss_uses_shifted_targets():
+    """
+    Loss phải tính logits[:, :-1, :] vs targets[:, 1:] (next-token prediction).
+    Kiểm tra bằng cách so sánh với loss tính thủ công theo đúng cách đó.
+    """
+    torch.manual_seed(0)
+    vocab_size = 11
+    model = DummyModel(vocab_size=vocab_size, d_model=8)
+    criterion = nn.CrossEntropyLoss(ignore_index=1)
+
+    loader = make_loader(batch_size=2, max_len=5)
+    batch = loader[0]
+    _, _, images, questions, answers = batch
+
+    model.eval()
+    with torch.no_grad():
+        logits, targets = model(images, questions, answers, max_len=5)
+
+    # Loss đúng: shift trái 1
+    expected_loss = criterion(
+        logits[:, :-1, :].contiguous().view(-1, vocab_size),
+        targets[:, 1:].contiguous().view(-1),
+    )
+    # Loss sai (không shift): sẽ khác
+    wrong_loss = criterion(
+        logits.contiguous().view(-1, vocab_size),
+        targets.contiguous().view(-1),
+    )
+
+    # Tính loss từ trainer (phải bằng expected, không bằng wrong)
+    cfg = TrainConfig(epochs=1, lr=0.0, weight_decay=0.0)
+    optimizer = build_optimizer(model, cfg)
+    actual_loss = train_one_epoch(model, loader, criterion, optimizer, device="cpu", max_len=5)
+
+    assert abs(actual_loss - expected_loss.item()) < 1e-5, \
+        "trainer phải dùng shifted loss (logits[:, :-1] vs targets[:, 1:])"
+    # Đảm bảo loss thực sự khác với cách tính sai (trừ khi ngẫu nhiên bằng nhau)
+    if abs(expected_loss.item() - wrong_loss.item()) > 1e-6:
+        assert abs(actual_loss - wrong_loss.item()) > 1e-5, \
+            "trainer KHÔNG được dùng unshifted loss"
 
 
 def test_build_scheduler_runs():
