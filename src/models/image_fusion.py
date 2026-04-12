@@ -47,6 +47,9 @@ class ImageEmbedding(nn.Module):
         factory = ImageEncoderFactory(embedding_dim, device, image_weights)
         self.encoders = nn.ModuleList([factory.get_encoder(name) for name in encoders])
         self.fusion_type = fusion
+        
+        if len(encoders) == 1:
+            fusion = "linear"
 
         if fusion == "linear":
             self.fusion = nn.Linear(len(encoders) * embedding_dim, embedding_dim)
