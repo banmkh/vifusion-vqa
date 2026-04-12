@@ -76,6 +76,31 @@ def parse_encoder_weights(arg: str | None) -> dict[str, str]:
     return out
 
 
+def print_sample_predictions(model, loader, device: str, max_len: int, n: int = 5) -> None:
+    """In n sample (câu hỏi / ground truth / dự đoán) lấy từ batch đầu tiên của loader."""
+    model.eval()
+    tokenizer = model.ans_model.tokenizer
+
+    batch = next(iter(loader))
+    _, _, images, questions, answers = batch
+
+    images = images[:n].to(device)
+    questions = questions[:n]
+    answers = answers[:n]
+
+    with torch.no_grad():
+        generated_ids = model.generate(images, questions, max_len=max_len)
+
+    print("-" * 72)
+    for i in range(len(questions)):
+        predicted = tokenizer.decode(generated_ids[i], skip_special_tokens=True).strip()
+        print(f"  [{i + 1}] Câu hỏi  : {questions[i]}")
+        print(f"       Ground truth: {answers[i]}")
+        print(f"       Dự đoán     : {predicted if predicted else '(rỗng)'}")
+        print()
+    print("-" * 72)
+
+
 def main() -> None:
     args = parse_args()
     root = Path(args.root)
@@ -169,6 +194,9 @@ def main() -> None:
             print(f"  - BLEU-4:     {benchmark_metrics['bleu_4']:.4f}")
             print(f"  - ROUGE-L:    {benchmark_metrics['rouge']:.4f}")
             print(f"  - CIDER:      {benchmark_metrics['cider']:.4f}\n")
+
+            print(f"Sample predictions (epoch {epoch + 1}):")
+            print_sample_predictions(model, dev_loader, device, max_len=data_cfg.max_len)
 
     save_path = Path(args.save)
     save_path.parent.mkdir(parents=True, exist_ok=True)
