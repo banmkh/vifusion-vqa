@@ -91,11 +91,22 @@ def print_sample_predictions(model, loader, device: str, max_len: int, n: int = 
     with torch.no_grad():
         generated_ids = model.generate(images, questions, max_len=max_len)
 
+        # Debug: so sánh với teacher-forced output
+        ans_vocab, _ = model.ans_model(answers[:n], max_len=max_len)
+        logits_tf, _ = model(images, questions[:n], answers[:n], max_len=max_len)
+        tf_preds = logits_tf.argmax(dim=-1)
+
     print("-" * 72)
     for i in range(len(questions)):
         predicted = tokenizer.decode(generated_ids[i], skip_special_tokens=True).strip()
+        raw_ids = generated_ids[i].tolist()
+        tf_ids = tf_preds[i].tolist()
+        gt_ids = ans_vocab[i].tolist()
         print(f"  [{i + 1}] Câu hỏi  : {questions[i]}")
         print(f"       Ground truth: {answers[i]}")
+        print(f"       GT IDs      : {gt_ids[:12]}")
+        print(f"       TeacherForce: {tf_ids[:12]}")
+        print(f"       Generate    : {raw_ids[:12]}")
         print(f"       Dự đoán     : {predicted if predicted else '(rỗng)'}")
         print()
     print("-" * 72)
@@ -178,7 +189,7 @@ def main() -> None:
         print(f"Epoch {epoch + 1}/{train_cfg.epochs} - dev loss: {avg_dev:.4f}")
 
         # Compute benchmark metrics every N epochs (starting from epoch 1)
-        if epoch == 0 or epoch == train_cfg.epochs - 1:
+        if (epoch + 1) % args.benchmark_interval == 0 or epoch == train_cfg.epochs - 1:
             print(f"\nComputing benchmark metrics for epoch {epoch + 1}...")
             benchmark_metrics = evaluate_benchmark_epoch(
                 model, dev_loader, device, max_len=data_cfg.max_len
