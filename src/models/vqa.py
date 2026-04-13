@@ -155,33 +155,23 @@ class VQAModel(nn.Module):
         x = att_embedds.to(self.device).unsqueeze(1).expand(-1, max_len, -1)
         decoder_mask = build_causal_mask(max_len, device=x.device) if mask else None
 
-        # Scheduled Sampling: trộn ground truth embeddings với predicted embeddings
-        # teacher_forcing_ratio=1.0 → 100% ground truth (giống cũ)
-        # teacher_forcing_ratio=0.5 → 50% dùng predicted token
-        if teacher_forcing_ratio >= 1.0 or not self.training:
-            # Pure teacher forcing (backward-compatible)
-            out = self.decoder(x, ans_embedds, decoder_mask)
-        else:
-            B = x.size(0)
-            # Bắt đầu từ ground truth embeddings
-            y = ans_embedds.clone()
-            all_logits = []
+        # Scheduled Sampling: trước khi gọi decoder, thay một số positions
+        # trong ans_embedds bằng predicted embeddings (1 forward pass duy nhất).
+        if teacher_forcing_ratio < 1.0 and self.training:
+            with torch.no_grad():
+                # 1 forward pass để lấy predictions
+                out_tf = self.decoder(x, ans_embedds, decoder_mask)
+                logits_tf = self.mlp(out_tf)                # (B, max_len, vocab_size)
+                pred_ids = logits_tf.argmax(dim=-1)         # (B, max_len)
+                pred_emb = self.ans_model.phobert_embed(input_ids=pred_ids)  # (B, max_len, D)
 
-            for t in range(max_len):
-                out_t = self.decoder(x, y, decoder_mask)   # (B, max_len, D)
-                logit_t = self.mlp(out_t[:, t, :])         # (B, vocab_size)
-                all_logits.append(logit_t)
+            # Random mask: positions sẽ dùng predicted embedding thay vì ground truth
+            # Position 0 (BOS) luôn giữ nguyên ground truth
+            swap_mask = torch.rand(ans_embedds.size(0), max_len, device=x.device) > teacher_forcing_ratio
+            swap_mask[:, 0] = False  # giữ BOS
 
-                # Với xác suất (1 - teacher_forcing_ratio), thay thế
-                # embedding tại position t+1 bằng predicted token
-                if t + 1 < max_len and torch.rand(1).item() > teacher_forcing_ratio:
-                    pred_token = logit_t.argmax(dim=-1)  # (B,)
-                    y[:, t + 1, :] = self.ans_model.phobert_embed(
-                        input_ids=pred_token.unsqueeze(1)
-                    ).squeeze(1)
+            ans_embedds = torch.where(swap_mask.unsqueeze(-1), pred_emb, ans_embedds)
 
-            output_logits = torch.stack(all_logits, dim=1)  # (B, max_len, vocab_size)
-            return output_logits, ans_vocab
-
+        out = self.decoder(x, ans_embedds, decoder_mask)
         output_logits = self.mlp(out)
         return output_logits, ans_vocab
