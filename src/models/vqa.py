@@ -72,10 +72,14 @@ class VQAModel(nn.Module):
         )
 
     @torch.no_grad()
-    def generate(self, images: torch.Tensor, questions: list, max_len: int = 27) -> torch.Tensor:
+    def generate(self, images: torch.Tensor, questions: list, max_len: int = 27,
+                 min_len: int = 2) -> torch.Tensor:
         """
         Sinh câu trả lời autoregressively — KHÔNG dùng ground truth answers.
-        Dùng trong evaluation thực sự.
+
+        Args:
+            min_len: Số token tối thiểu trước khi cho phép EOS.
+                     Ngăn model predict EOS ngay lập tức.
 
         Returns:
             generated: Tensor (B, max_len) chứa token IDs
@@ -99,7 +103,6 @@ class VQAModel(nn.Module):
             raise RuntimeError("Attention stack produced no output")
 
         att_embedds = self.tanh(att_embedds)
-        # Dropout disabled tự động khi model.eval()
 
         x = att_embedds.unsqueeze(1).expand(-1, max_len, -1)  # (B, max_len, D)
         decoder_mask = build_causal_mask(max_len, device=x.device)
@@ -110,16 +113,18 @@ class VQAModel(nn.Module):
         finished = torch.zeros(B, dtype=torch.bool, device=self.device)
 
         for step in range(max_len - 1):
-            # Embed toàn bộ sequence hiện tại (PAD ở phần chưa generate)
             y = self.ans_model.phobert_embed(input_ids=generated)  # (B, max_len, D)
 
             out = self.decoder(x, y, decoder_mask)      # (B, max_len, D)
             logits = self.mlp(out)                       # (B, max_len, vocab_size)
 
-            # Token tiếp theo từ vị trí `step`
+            # Block EOS/PAD trước min_len tokens — buộc model phải generate content
+            if step < min_len:
+                logits[:, step, eos_id] = float("-inf")
+                logits[:, step, pad_id] = float("-inf")
+
             next_token = logits[:, step, :].argmax(dim=-1)  # (B,)
 
-            # Không cập nhật sequence đã kết thúc
             next_token = next_token.masked_fill(finished, pad_id)
             generated[:, step + 1] = next_token
 
@@ -129,7 +134,8 @@ class VQAModel(nn.Module):
 
         return generated  # (B, max_len) token IDs
 
-    def forward(self, images, questions, answers, anno_ids=None, mask: bool = True, max_len: int = 27):
+    def forward(self, images, questions, answers, anno_ids=None, mask: bool = True,
+                max_len: int = 27, teacher_forcing_ratio: float = 1.0):
         image_embeddings, _ = self.image_model(images.to(self.device), anno_ids)
         ques_embeddings = self.ques_model(questions, max_len=max_len)
         ques_embedds = ques_embeddings.unsqueeze(1)
@@ -147,10 +153,35 @@ class VQAModel(nn.Module):
         ans_vocab, ans_embedds = self.ans_model(answers, max_len=max_len)
 
         x = att_embedds.to(self.device).unsqueeze(1).expand(-1, max_len, -1)
-        y = ans_embedds
-
         decoder_mask = build_causal_mask(max_len, device=x.device) if mask else None
-        out = self.decoder(x, y, decoder_mask)
+
+        # Scheduled Sampling: trộn ground truth embeddings với predicted embeddings
+        # teacher_forcing_ratio=1.0 → 100% ground truth (giống cũ)
+        # teacher_forcing_ratio=0.5 → 50% dùng predicted token
+        if teacher_forcing_ratio >= 1.0 or not self.training:
+            # Pure teacher forcing (backward-compatible)
+            out = self.decoder(x, ans_embedds, decoder_mask)
+        else:
+            B = x.size(0)
+            # Bắt đầu từ ground truth embeddings
+            y = ans_embedds.clone()
+            all_logits = []
+
+            for t in range(max_len):
+                out_t = self.decoder(x, y, decoder_mask)   # (B, max_len, D)
+                logit_t = self.mlp(out_t[:, t, :])         # (B, vocab_size)
+                all_logits.append(logit_t)
+
+                # Với xác suất (1 - teacher_forcing_ratio), thay thế
+                # embedding tại position t+1 bằng predicted token
+                if t + 1 < max_len and torch.rand(1).item() > teacher_forcing_ratio:
+                    pred_token = logit_t.argmax(dim=-1)  # (B,)
+                    y[:, t + 1, :] = self.ans_model.phobert_embed(
+                        input_ids=pred_token.unsqueeze(1)
+                    ).squeeze(1)
+
+            output_logits = torch.stack(all_logits, dim=1)  # (B, max_len, vocab_size)
+            return output_logits, ans_vocab
 
         output_logits = self.mlp(out)
         return output_logits, ans_vocab

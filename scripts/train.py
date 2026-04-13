@@ -168,11 +168,18 @@ def main() -> None:
     scheduler = build_scheduler(optimizer, train_cfg.epochs)
 
     for epoch in range(train_cfg.epochs):
+        # Scheduled Sampling: bắt đầu 100% teacher forcing, giảm dần đến 50%
+        # Nửa đầu: pure teacher forcing (model học cơ bản)
+        # Nửa sau: giảm dần để model quen với input tự generate
+        progress = epoch / max(1, train_cfg.epochs - 1)
+        tf_ratio = max(0.5, 1.0 - 0.5 * progress)
+
         avg_loss = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, max_len=data_cfg.max_len
+            model, train_loader, criterion, optimizer, device,
+            max_len=data_cfg.max_len, teacher_forcing_ratio=tf_ratio,
         )
         scheduler.step()
-        print(f"Epoch {epoch + 1}/{train_cfg.epochs} - train loss: {avg_loss:.4f}")
+        print(f"Epoch {epoch + 1}/{train_cfg.epochs} - train loss: {avg_loss:.4f} (tf_ratio={tf_ratio:.2f})")
 
         avg_dev = evaluate_one_epoch(
             model, dev_loader, criterion, device, max_len=data_cfg.max_len

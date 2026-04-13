@@ -16,14 +16,18 @@ class TrainConfig:
     weight_decay: float = 0.001
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device, max_len: int):
+def train_one_epoch(model, loader, criterion, optimizer, device, max_len: int,
+                    teacher_forcing_ratio: float = 1.0):
     model.train()
     total_loss = 0.0
     for _, batch in enumerate(loader):
         _, _, images, questions, answers = batch
         images = images.to(device)
 
-        logits, targets = model(images, questions, answers, anno_ids=None, mask=True, max_len=max_len)
+        logits, targets = model(
+            images, questions, answers, anno_ids=None, mask=True,
+            max_len=max_len, teacher_forcing_ratio=teacher_forcing_ratio,
+        )
         # logits[:, t, :] dự đoán token tại vị trí t+1 (sau khi thấy token 0..t)
         # → so sánh logits[:, :-1, :] với targets[:, 1:] (shift trái 1 vị trí)
         loss = criterion(
