@@ -91,56 +91,14 @@ def print_sample_predictions(model, loader, device: str, max_len: int, n: int = 
     with torch.no_grad():
         generated_ids = model.generate(images, questions, max_len=max_len)
 
-        # Debug: so sánh logits tại position 0 giữa teacher-force vs generate
-        # Teacher-force: full answer embeddings
-        ans_vocab, _ = model.ans_model(answers[:n], max_len=max_len)
-        logits_tf, _ = model(images, questions[:n], answers[:n], max_len=max_len)
-
-        # Generate step-0: BOS + PAD embeddings
-        import torch as _torch
-        _pad_id = tokenizer.pad_token_id
-        _bos_id = tokenizer.bos_token_id
-        _B = images.size(0)
-        _init_ids = _torch.full((_B, max_len), _pad_id, dtype=_torch.long, device=images.device)
-        _init_ids[:, 0] = _bos_id
-        _y_gen = model.ans_model.phobert_embed(input_ids=_init_ids)
-
-        # Tính image+question context (giống generate)
-        _img_emb, _ = model.image_model(images)
-        _q_emb = model.ques_model(questions[:n], max_len=max_len).unsqueeze(1)
-        _att = None
-        for _al in model.an_model:
-            _att = _al(_img_emb, _q_emb)
-        _att = model.tanh(_att)
-        _x = _att.unsqueeze(1).expand(-1, max_len, -1)
-        from src.models.vqa import build_causal_mask
-        _mask = build_causal_mask(max_len, device=_x.device)
-
-        _out_gen = model.decoder(_x, _y_gen, _mask)
-        _logits_gen = model.mlp(_out_gen)
-
-        # So sánh y embeddings tại position 0
-        _y_tf = model.ans_model.phobert_embed(input_ids=ans_vocab.to(images.device))
-
     print("-" * 72)
-    for i in range(min(3, len(questions))):
+    for i in range(len(questions)):
         predicted = tokenizer.decode(generated_ids[i], skip_special_tokens=True).strip()
-        gt_ids = ans_vocab[i].tolist()
-
-        # Top-5 predictions tại position 0
-        tf_top5 = logits_tf[i, 0].topk(5)
-        gen_top5 = _logits_gen[i, 0].topk(5)
-
+        raw_ids = generated_ids[i].tolist()
         print(f"  [{i + 1}] Câu hỏi  : {questions[i]}")
         print(f"       Ground truth: {answers[i]}")
-        print(f"       GT IDs      : {gt_ids[:10]}")
-        print(f"       TF pos0 top5: ids={tf_top5.indices.tolist()} vals={[f'{v:.2f}' for v in tf_top5.values.tolist()]}")
-        print(f"       Gen pos0 top5: ids={gen_top5.indices.tolist()} vals={[f'{v:.2f}' for v in gen_top5.values.tolist()]}")
-        print(f"       y_tf[0,:3]  : {_y_tf[i, 0, :3].tolist()}")
-        print(f"       y_gen[0,:3] : {_y_gen[i, 0, :3].tolist()}")
-        print(f"       x match     : {_torch.allclose(_x[i, 0], _x[i, 0])}")
-        print(f"       Generate IDs: {generated_ids[i].tolist()[:10]}")
         print(f"       Dự đoán     : {predicted if predicted else '(rỗng)'}")
+        print(f"       Raw IDs     : {raw_ids[:12]}")
         print()
     print("-" * 72)
 
