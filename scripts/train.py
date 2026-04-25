@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -74,6 +75,98 @@ def parse_encoder_weights(arg: str | None) -> dict[str, str]:
         name, path = item.split("=", 1)
         out[name.strip().lower()] = path.strip()
     return out
+
+
+def print_model_summary(
+    model: nn.Module,
+    train_loader,
+    device: str,
+    batch_size: int,
+    epochs: int,
+    optimizer: torch.optim.Optimizer,
+) -> None:
+    """In parameter count, memory footprint, và ước tính training time."""
+    # --- Parameter count ---
+    total = sum(p.numel() for p in model.parameters())
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    frozen = total - trainable
+
+    # --- Memory footprint ---
+    # fp32: 4 bytes/param; gradient: thêm 4 bytes; Adam: thêm 8 bytes (m + v)
+    param_mb = total * 4 / 1024 ** 2
+    grad_mb = trainable * 4 / 1024 ** 2
+    n_optimizer_states = sum(
+        p.numel() for group in optimizer.param_groups for p in group["params"] if p.requires_grad
+    )
+    adam_mb = n_optimizer_states * 8 / 1024 ** 2
+    total_mem_mb = param_mb + grad_mb + adam_mb
+
+    # --- GPU memory (nếu có) ---
+    gpu_alloc_mb = 0.0
+    if device.startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.synchronize()
+        gpu_alloc_mb = torch.cuda.memory_allocated() / 1024 ** 2
+
+    # --- Ước tính training time: đo 3 batch forward ---
+    model.train()
+    times: list[float] = []
+    criterion_tmp = nn.CrossEntropyLoss(ignore_index=1)
+    sample_batches = []
+    for i, batch in enumerate(train_loader):
+        if i >= 3:
+            break
+        sample_batches.append(batch)
+
+    for batch in sample_batches:
+        _, _, images, questions, answers = batch
+        images = images.to(device)
+        t0 = time.perf_counter()
+        logits, ans_vocab = model(images, questions, answers, max_len=27)
+        B, T, V = logits.shape
+        loss = criterion_tmp(logits.reshape(B * T, V), ans_vocab.reshape(B * T))
+        loss.backward()
+        optimizer.zero_grad()
+        if device.startswith("cuda"):
+            torch.cuda.synchronize()
+        times.append(time.perf_counter() - t0)
+
+    avg_batch_s = sum(times) / len(times)
+    steps_per_epoch = len(train_loader)
+    epoch_s = avg_batch_s * steps_per_epoch
+    total_s = epoch_s * epochs
+
+    def fmt_time(s: float) -> str:
+        if s < 60:
+            return f"{s:.1f}s"
+        if s < 3600:
+            return f"{s/60:.1f}min"
+        return f"{s/3600:.1f}h"
+
+    # --- In ra ---
+    sep = "=" * 60
+    print(sep)
+    print("  MODEL SUMMARY TRƯỚC KHI TRAIN")
+    print(sep)
+    print(f"  Parameters")
+    print(f"    Total      : {total:>15,}")
+    print(f"    Trainable  : {trainable:>15,}")
+    print(f"    Frozen     : {frozen:>15,}")
+    print()
+    print(f"  Memory footprint (ước tính)")
+    print(f"    Params (fp32)  : {param_mb:>8.1f} MB")
+    print(f"    Gradients      : {grad_mb:>8.1f} MB")
+    print(f"    Optimizer (Adam): {adam_mb:>7.1f} MB")
+    print(f"    Tổng ước tính  : {total_mem_mb:>8.1f} MB  (~{total_mem_mb/1024:.2f} GB)")
+    if gpu_alloc_mb > 0:
+        print(f"    GPU đang dùng  : {gpu_alloc_mb:>8.1f} MB")
+    print()
+    print(f"  Training time (ước tính, batch_size={batch_size})")
+    print(f"    Avg / batch    : {avg_batch_s*1000:>8.1f} ms")
+    print(f"    Steps / epoch  : {steps_per_epoch:>8,}")
+    print(f"    Thời gian / epoch: {fmt_time(epoch_s):>8}")
+    print(f"    Tổng {epochs} epoch  : {fmt_time(total_s):>8}")
+    print(sep)
+    print()
 
 
 def print_sample_predictions(model, loader, device: str, max_len: int, n: int = 5) -> None:
@@ -166,6 +259,8 @@ def main() -> None:
     criterion = nn.CrossEntropyLoss(ignore_index=1)
     optimizer = build_optimizer(model, train_cfg)
     scheduler = build_scheduler(optimizer, train_cfg.epochs)
+
+    print_model_summary(model, train_loader, device, batch_size, train_cfg.epochs, optimizer)
 
     for epoch in range(train_cfg.epochs):
         # Scheduled Sampling: bắt đầu 100% teacher forcing, giảm dần đến 50%
